@@ -29,14 +29,38 @@ const QuizGenerator = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 10MB", variant: "destructive" });
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 20MB", variant: "destructive" });
       return;
     }
     setUploading(true);
     try {
-      const text = await file.text();
-      setUploadedFile({ name: file.name, content: text.slice(0, 50000) });
+      // For text-based files, read directly
+      const textExtensions = ['.txt', '.md', '.js', '.ts', '.py', '.java', '.html', '.css', '.json', '.csv', '.xml'];
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      
+      if (textExtensions.includes(ext)) {
+        const text = await file.text();
+        setUploadedFile({ name: file.name, content: text.slice(0, 50000) });
+      } else {
+        // For binary files, upload to storage
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+        
+        const filePath = `${user.id}/${Date.now()}_${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('uploads').upload(filePath, file);
+        if (uploadError) throw uploadError;
+        
+        setUploadedFile({ 
+          name: file.name, 
+          content: `[FILE_UPLOADED: ${file.name}]
+File Type: ${file.type || ext}
+File Size: ${(file.size / 1024).toFixed(1)} KB
+Storage Path: ${filePath}
+
+The user has uploaded this file. Please generate quiz questions based on the filename and any context provided.`
+        });
+      }
       toast({ title: "File loaded", description: `${file.name} ready` });
     } catch {
       toast({ title: "Error reading file", variant: "destructive" });
@@ -145,7 +169,7 @@ ${uploadedFile.content}`;
             type="file"
             className="hidden"
             id="quiz-file-input"
-            accept=".pdf,.txt,.md,.js,.ts,.py,.java,.html,.css,.json,.csv"
+            accept=".pdf,.ppt,.pptx,.xls,.xlsx,.csv,.doc,.docx,.txt,.md,.js,.ts,.py,.java,.html,.css,.json,.xml,.zip"
             onChange={handleFileUpload}
           />
           <Button
