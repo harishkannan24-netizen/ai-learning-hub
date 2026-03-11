@@ -13,6 +13,7 @@ import {
   Brain,
   LogOut,
   Sparkles,
+  Clock,
 } from "lucide-react";
 
 const features = [
