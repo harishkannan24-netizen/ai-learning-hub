@@ -22,13 +22,7 @@ const QuizGenerator = () => {
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useState<HTMLInputElement | null>([null])[0] as any;
-  const fileRef = useState<HTMLInputElement | null>(null);
-  const inputRef = useState<HTMLInputElement | null>(null);
   const { toast } = useToast();
-  const fileInputElement = document.createElement("input");
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
