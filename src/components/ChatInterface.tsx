@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2 } from "lucide-react";
+import { Send, Bot, User, Loader2, Paperclip, X, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -12,13 +13,25 @@ interface ChatInterfaceProps {
   systemPrompt: string;
   placeholder?: string;
   functionName?: string;
+  moduleName?: string;
 }
 
-const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", functionName = "chat" }: ChatInterfaceProps) => {
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+
+const ChatInterface = ({
+  systemPrompt,
+  placeholder = "Type your message...",
+  functionName = "chat",
+  moduleName = "general",
+}: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -26,29 +39,155 @@ const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", fun
     }
   }, [messages]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      toast({ title: "File too large", description: "Max file size is 10MB", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const text = await file.text();
+      setUploadedFile({ name: file.name, content: text.slice(0, 50000) }); // limit context
+      toast({ title: "File loaded", description: `${file.name} ready to analyze` });
+    } catch {
+      toast({ title: "Error reading file", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const saveToHistory = async (query: string, response: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from("chat_history").insert({
+        user_id: user.id,
+        module_name: moduleName,
+        search_query: query,
+        ai_response: response,
+      });
+    } catch (err) {
+      console.error("Failed to save history:", err);
+    }
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg: Message = { role: "user", content: input.trim() };
+    if ((!input.trim() && !uploadedFile) || loading) return;
+
+    let userContent = input.trim();
+    if (uploadedFile) {
+      userContent = `${userContent ? userContent + "\n\n" : ""}[Uploaded file: ${uploadedFile.name}]\n\n${uploadedFile.content}`;
+    }
+
+    const userMsg: Message = { role: "user", content: userContent };
+    const displayMsg: Message = {
+      role: "user",
+      content: uploadedFile
+        ? `${input.trim() ? input.trim() + "\n\n" : ""}📎 ${uploadedFile.name}`
+        : input.trim(),
+    };
     const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    setMessages((prev) => [...prev, displayMsg]);
     setInput("");
+    setUploadedFile(null);
     setLoading(true);
 
+    let assistantSoFar = "";
+
+    const upsertAssistant = (chunk: string) => {
+      assistantSoFar += chunk;
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+        }
+        return [...prev, { role: "assistant", content: assistantSoFar }];
+      });
+    };
+
     try {
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: { messages: newMessages, systemPrompt },
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: newMessages, systemPrompt }),
       });
 
-      if (error) throw error;
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || `Error ${resp.status}`);
+      }
 
-      const assistantContent = data?.choices?.[0]?.message?.content || data?.content || data?.message || "I'm sorry, I couldn't process that request.";
-      setMessages([...newMessages, { role: "assistant", content: assistantContent }]);
+      if (!resp.body) throw new Error("No response body");
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let streamDone = false;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") { streamDone = true; break; }
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) upsertAssistant(content);
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      // flush remaining
+      if (textBuffer.trim()) {
+        for (let raw of textBuffer.split("\n")) {
+          if (!raw) continue;
+          if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+          if (raw.startsWith(":") || raw.trim() === "") continue;
+          if (!raw.startsWith("data: ")) continue;
+          const jsonStr = raw.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) upsertAssistant(content);
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Save to history
+      if (assistantSoFar) {
+        await saveToHistory(input.trim() || "File upload", assistantSoFar);
+      }
     } catch (err: any) {
       console.error("Chat error:", err);
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: "Sorry, something went wrong. Please try again." },
-      ]);
+      const errorMsg = err.message || "Sorry, something went wrong. Please try again.";
+      if (err.message?.includes("Rate limit") || err.message?.includes("429")) {
+        toast({ title: "Rate Limited", description: "Please wait a moment and try again.", variant: "destructive" });
+      } else if (err.message?.includes("402") || err.message?.includes("credits")) {
+        toast({ title: "Credits Exhausted", description: "Please add funds to continue.", variant: "destructive" });
+      }
+      setMessages((prev) => [...prev, { role: "assistant", content: errorMsg }]);
     } finally {
       setLoading(false);
     }
@@ -72,13 +211,13 @@ const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", fun
                   <Bot className="w-4 h-4 text-primary-foreground" />
                 </div>
               )}
-              <div className={`max-w-[75%] ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}`}>
+              <div className={`max-w-[80%] ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}`}>
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm max-w-none">
+                  <div className="prose prose-sm max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:text-secondary-foreground prose-li:text-secondary-foreground prose-strong:text-foreground prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-pre:p-4 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
-                  <p className="text-sm">{msg.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 )}
               </div>
               {msg.role === "user" && (
@@ -88,7 +227,7 @@ const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", fun
               )}
             </div>
           ))}
-          {loading && (
+          {loading && !messages.find((m, i) => i === messages.length - 1 && m.role === "assistant") && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-primary-foreground" />
@@ -101,11 +240,38 @@ const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", fun
         </div>
       </ScrollArea>
 
+      {/* File preview */}
+      {uploadedFile && (
+        <div className="border-t bg-secondary/50 px-4 py-2">
+          <div className="max-w-3xl mx-auto flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" />
+            <span className="text-sm text-foreground truncate flex-1">{uploadedFile.name}</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setUploadedFile(null)}>
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="border-t bg-card p-4">
-        <form
-          onSubmit={(e) => { e.preventDefault(); sendMessage(); }}
-          className="flex gap-2 max-w-3xl mx-auto"
-        >
+        <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2 max-w-3xl mx-auto">
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".pdf,.txt,.md,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.html,.css,.json,.csv,.docx,.doc"
+            onChange={handleFileUpload}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || loading}
+            className="shrink-0"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -113,7 +279,7 @@ const ChatInterface = ({ systemPrompt, placeholder = "Type your message...", fun
             disabled={loading}
             className="flex-1"
           />
-          <Button type="submit" disabled={loading || !input.trim()} className="gradient-primary border-0">
+          <Button type="submit" disabled={loading || (!input.trim() && !uploadedFile)} className="gradient-primary border-0">
             <Send className="w-4 h-4" />
           </Button>
         </form>
