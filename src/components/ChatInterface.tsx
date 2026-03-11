@@ -43,16 +43,40 @@ const ChatInterface = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 20 * 1024 * 1024; // 20MB
     if (file.size > maxSize) {
-      toast({ title: "File too large", description: "Max file size is 10MB", variant: "destructive" });
+      toast({ title: "File too large", description: "Max file size is 20MB", variant: "destructive" });
       return;
     }
 
     setUploading(true);
     try {
-      const text = await file.text();
-      setUploadedFile({ name: file.name, content: text.slice(0, 50000) }); // limit context
+      // For text-based files, read directly
+      const textExtensions = ['.txt', '.md', '.js', '.ts', '.tsx', '.jsx', '.py', '.java', '.cpp', '.c', '.html', '.css', '.json', '.csv', '.xml'];
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      
+      if (textExtensions.includes(ext)) {
+        const text = await file.text();
+        setUploadedFile({ name: file.name, content: text.slice(0, 50000) });
+      } else {
+        // For binary files (PDF, DOC, PPT, XLS, etc.), upload to storage and include metadata
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+        
+        const filePath = `${user.id}/${Date.now()}_${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('uploads').upload(filePath, file);
+        if (uploadError) throw uploadError;
+        
+        setUploadedFile({ 
+          name: file.name, 
+          content: `[FILE_UPLOADED: ${file.name}]
+File Type: ${file.type || ext}
+File Size: ${(file.size / 1024).toFixed(1)} KB
+Storage Path: ${filePath}
+
+The user has uploaded this file. Please analyze based on the filename and context provided by the user.`
+        });
+      }
       toast({ title: "File loaded", description: `${file.name} ready to analyze` });
     } catch {
       toast({ title: "Error reading file", variant: "destructive" });
