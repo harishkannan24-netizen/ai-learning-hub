@@ -11,6 +11,7 @@ import DoubtResolver from "./pages/DoubtResolver";
 import RoadBuilder from "./pages/RoadBuilder";
 import NotesGenerator from "./pages/NotesGenerator";
 import QuizGenerator from "./pages/QuizGenerator";
+import SearchHistory from "./pages/SearchHistory";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/road-builder" element={<ProtectedRoute><RoadBuilder /></ProtectedRoute>} />
           <Route path="/notes-generator" element={<ProtectedRoute><NotesGenerator /></ProtectedRoute>} />
           <Route path="/quiz-generator" element={<ProtectedRoute><QuizGenerator /></ProtectedRoute>} />
+          <Route path="/search-history" element={<ProtectedRoute><SearchHistory /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
