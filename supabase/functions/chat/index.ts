@@ -25,6 +25,7 @@ serve(async (req) => {
           { role: "system", content: systemPrompt || "You are a helpful AI assistant." },
           ...messages,
         ],
+        stream: true,
       }),
     });
 
@@ -44,9 +45,8 @@ serve(async (req) => {
       throw new Error("AI gateway error");
     }
 
-    const data = await response.json();
-    return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(response.body, {
+      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
     console.error("chat error:", e);

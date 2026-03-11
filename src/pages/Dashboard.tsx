@@ -13,6 +13,7 @@ import {
   Brain,
   LogOut,
   Sparkles,
+  Clock,
 } from "lucide-react";
 
 const features = [
@@ -57,6 +58,13 @@ const features = [
     icon: Brain,
     path: "/quiz-generator",
     gradient: "from-indigo-500 to-blue-500",
+  },
+  {
+    title: "Search History",
+    description: "View all your past queries and responses",
+    icon: Clock,
+    path: "/search-history",
+    gradient: "from-gray-500 to-slate-600",
   },
 ];
 
