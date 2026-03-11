@@ -3,9 +3,11 @@ import FeaturePageLayout from "@/components/FeaturePageLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Brain, Loader2, CheckCircle2, XCircle, Send } from "lucide-react";
+import { Brain, Loader2, CheckCircle2, XCircle, Send, Paperclip, X, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import ReactMarkdown from "react-markdown";
+import { useToast } from "@/hooks/use-toast";
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 interface QuizQuestion {
   question: string;
@@ -20,39 +22,116 @@ const QuizGenerator = () => {
   const [loading, setLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useState<HTMLInputElement | null>([null])[0] as any;
+  const fileRef = useState<HTMLInputElement | null>(null);
+  const inputRef = useState<HTMLInputElement | null>(null);
+  const { toast } = useToast();
+  const fileInputElement = document.createElement("input");
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 10MB", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const text = await file.text();
+      setUploadedFile({ name: file.name, content: text.slice(0, 50000) });
+      toast({ title: "File loaded", description: `${file.name} ready` });
+    } catch {
+      toast({ title: "Error reading file", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const generateQuiz = async () => {
-    if (!topic.trim() || loading) return;
+    if ((!topic.trim() && !uploadedFile) || loading) return;
     setLoading(true);
     setQuestions([]);
     setAnswers({});
     setSubmitted(false);
 
-    try {
-      const { data, error } = await supabase.functions.invoke("chat", {
-        body: {
-          messages: [
-            {
-              role: "user",
-              content: `Generate exactly 5 multiple choice quiz questions about "${topic}". Return ONLY a valid JSON array with this format:
+    let userContent = `Generate exactly 5 multiple choice quiz questions about "${topic}". Return ONLY a valid JSON array with this format:
 [{"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"..."}]
-where "correct" is the 0-based index of the correct option. No extra text.`,
-            },
-          ],
-          systemPrompt: "You are a quiz generator. Return ONLY valid JSON arrays of quiz questions. No markdown, no extra text.",
+where "correct" is the 0-based index of the correct option. No extra text, no markdown.`;
+
+    if (uploadedFile) {
+      userContent = `Based on the following document content, generate exactly 5 multiple choice quiz questions. Return ONLY a valid JSON array with this format:
+[{"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"..."}]
+where "correct" is the 0-based index of the correct option. No extra text, no markdown.
+
+Document (${uploadedFile.name}):
+${uploadedFile.content}`;
+    }
+
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: userContent }],
+          systemPrompt: "You are a quiz generator. Return ONLY valid JSON arrays of quiz questions. No markdown, no extra text, no code fences.",
+        }),
       });
 
-      if (error) throw error;
+      if (!resp.ok) throw new Error(`Error ${resp.status}`);
+      if (!resp.body) throw new Error("No body");
 
-      const content = data?.choices?.[0]?.message?.content || data?.content || data?.message || "";
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      // Collect streamed response
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let textBuffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, idx);
+          textBuffer = textBuffer.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) fullContent += content;
+          } catch { /* partial */ }
+        }
+      }
+
+      const jsonMatch = fullContent.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         setQuestions(parsed);
+
+        // Save to history
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("chat_history").insert({
+            user_id: user.id,
+            module_name: "quiz-generator",
+            search_query: topic.trim() || `Quiz from ${uploadedFile?.name}`,
+            ai_response: `Generated ${parsed.length} quiz questions`,
+          });
+        }
       }
+      setUploadedFile(null);
     } catch (err) {
       console.error("Quiz generation error:", err);
+      toast({ title: "Failed to generate quiz", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -66,17 +145,44 @@ where "correct" is the 0-based index of the correct option. No extra text.`,
     <FeaturePageLayout title="Quiz Generator" icon={<Brain className="w-5 h-5 text-primary-foreground" />} gradient="from-indigo-500 to-blue-500">
       <div className="p-4 max-w-3xl mx-auto h-full overflow-y-auto">
         <div className="flex gap-2 mb-6">
+          <input
+            type="file"
+            className="hidden"
+            id="quiz-file-input"
+            accept=".pdf,.txt,.md,.js,.ts,.py,.java,.html,.css,.json,.csv"
+            onChange={handleFileUpload}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => document.getElementById("quiz-file-input")?.click()}
+            disabled={uploading || loading}
+            className="shrink-0"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </Button>
           <Input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Enter a topic for quiz, e.g., 'JavaScript Promises'"
             onKeyDown={(e) => e.key === "Enter" && generateQuiz()}
           />
-          <Button onClick={generateQuiz} disabled={loading || !topic.trim()} className="gradient-primary border-0 gap-2">
+          <Button onClick={generateQuiz} disabled={loading || (!topic.trim() && !uploadedFile)} className="gradient-primary border-0 gap-2">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             Generate
           </Button>
         </div>
+
+        {uploadedFile && (
+          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-secondary/50">
+            <FileText className="w-4 h-4 text-primary" />
+            <span className="text-sm text-foreground truncate flex-1">{uploadedFile.name}</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setUploadedFile(null)}>
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        )}
 
         {questions.length > 0 && (
           <div className="space-y-4">
