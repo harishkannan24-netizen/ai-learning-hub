@@ -145,7 +145,7 @@ ${uploadedFile.content}`;
             type="file"
             className="hidden"
             id="quiz-file-input"
-            accept=".pdf,.txt,.md,.js,.ts,.py,.java,.html,.css,.json,.csv"
+            accept=".pdf,.ppt,.pptx,.xls,.xlsx,.csv,.doc,.docx,.txt,.md,.js,.ts,.py,.java,.html,.css,.json,.xml,.zip"
             onChange={handleFileUpload}
           />
           <Button

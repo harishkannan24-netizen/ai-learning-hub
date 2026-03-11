@@ -259,7 +259,7 @@ const ChatInterface = ({
             type="file"
             ref={fileInputRef}
             className="hidden"
-            accept=".pdf,.txt,.md,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.html,.css,.json,.csv,.docx,.doc"
+            accept=".pdf,.ppt,.pptx,.xls,.xlsx,.csv,.doc,.docx,.txt,.md,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.html,.css,.json,.xml,.zip,.rar,.mp3,.mp4,.wav,.png,.jpg,.jpeg,.gif,.webp,.svg,.ico,.woff,.woff2,.ttf,.otf,.eot"
             onChange={handleFileUpload}
           />
           <Button
