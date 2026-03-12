@@ -11,6 +11,8 @@ import DoubtResolver from "./pages/DoubtResolver";
 import RoadBuilder from "./pages/RoadBuilder";
 import NotesGenerator from "./pages/NotesGenerator";
 import QuizGenerator from "./pages/QuizGenerator";
+import ImageGenerator from "./pages/ImageGenerator";
+import PresentationGenerator from "./pages/PresentationGenerator";
 import SearchHistory from "./pages/SearchHistory";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
@@ -32,6 +34,8 @@ const App = () => (
           <Route path="/road-builder" element={<ProtectedRoute><RoadBuilder /></ProtectedRoute>} />
           <Route path="/notes-generator" element={<ProtectedRoute><NotesGenerator /></ProtectedRoute>} />
           <Route path="/quiz-generator" element={<ProtectedRoute><QuizGenerator /></ProtectedRoute>} />
+          <Route path="/image-generator" element={<ProtectedRoute><ImageGenerator /></ProtectedRoute>} />
+          <Route path="/presentation-generator" element={<ProtectedRoute><PresentationGenerator /></ProtectedRoute>} />
           <Route path="/search-history" element={<ProtectedRoute><SearchHistory /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
