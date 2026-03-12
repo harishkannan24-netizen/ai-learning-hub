@@ -1,0 +1,1 @@
+CREATE POLICY "Users can delete own chat history" ON public.chat_history FOR DELETE TO authenticated USING (auth.uid() = user_id);
