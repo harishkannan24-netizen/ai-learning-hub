@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2, Paperclip, X, FileText } from "lucide-react";
+import { Send, Bot, User, Loader2, Paperclip, X, FileText, Pencil } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +31,8 @@ const ChatInterface = ({
   const [uploadedFile, setUploadedFile] = useState<{ name: string; content: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -94,23 +96,8 @@ const ChatInterface = ({
     } catch (err) { console.error("Failed to save history:", err); }
   };
 
-  const sendMessage = async () => {
-    if ((!input.trim() && !uploadedFile) || loading) return;
-    let userContent = input.trim();
-    if (uploadedFile) {
-      userContent = `${userContent ? userContent + "\n\n" : ""}[Uploaded file: ${uploadedFile.name}]\n\n${uploadedFile.content}`;
-    }
-    const userMsg: Message = { role: "user", content: userContent };
-    const displayMsg: Message = {
-      role: "user",
-      content: uploadedFile ? `${input.trim() ? input.trim() + "\n\n" : ""}📎 ${uploadedFile.name}` : input.trim(),
-    };
-    const newMessages = [...messages, userMsg];
-    setMessages(prev => [...prev, displayMsg]);
-    setInput("");
-    setUploadedFile(null);
+  const streamMessage = async (allMessages: Message[], displayInput: string) => {
     setLoading(true);
-
     let assistantSoFar = "";
     const upsertAssistant = (chunk: string) => {
       assistantSoFar += chunk;
@@ -127,7 +114,7 @@ const ChatInterface = ({
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ messages: newMessages, systemPrompt }),
+        body: JSON.stringify({ messages: allMessages, systemPrompt }),
       });
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
@@ -181,20 +168,50 @@ const ChatInterface = ({
       }
 
       if (assistantSoFar) {
-        await saveToHistory(input.trim() || "File upload", assistantSoFar);
+        await saveToHistory(displayInput || "Message", assistantSoFar);
       }
     } catch (err: any) {
       console.error("Chat error:", err);
-      const errorMsg = err.message || "Sorry, something went wrong.";
       if (err.message?.includes("Rate limit") || err.message?.includes("429")) {
         toast({ title: "Rate Limited", description: "Please wait a moment.", variant: "destructive" });
       } else if (err.message?.includes("402") || err.message?.includes("credits")) {
         toast({ title: "Credits Exhausted", description: "Please add funds.", variant: "destructive" });
       }
-      setMessages(prev => [...prev, { role: "assistant", content: errorMsg }]);
+      setMessages(prev => [...prev, { role: "assistant", content: err.message || "Sorry, something went wrong." }]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendMessage = async () => {
+    if ((!input.trim() && !uploadedFile) || loading) return;
+    let userContent = input.trim();
+    if (uploadedFile) {
+      userContent = `${userContent ? userContent + "\n\n" : ""}[Uploaded file: ${uploadedFile.name}]\n\n${uploadedFile.content}`;
+    }
+    const userMsg: Message = { role: "user", content: userContent };
+    const displayMsg: Message = {
+      role: "user",
+      content: uploadedFile ? `${input.trim() ? input.trim() + "\n\n" : ""}📎 ${uploadedFile.name}` : input.trim(),
+    };
+    const newMessages = [...messages, userMsg];
+    setMessages(prev => [...prev, displayMsg]);
+    const displayInput = input.trim() || "File upload";
+    setInput("");
+    setUploadedFile(null);
+    await streamMessage(newMessages, displayInput);
+  };
+
+  const editAndResend = async (index: number) => {
+    if (!editText.trim() || loading) return;
+    // Truncate messages to before this user message, add the edited one
+    const truncated = messages.slice(0, index);
+    const editedMsg: Message = { role: "user", content: editText.trim() };
+    const newMessages = [...truncated, editedMsg];
+    setMessages(newMessages);
+    setEditingIndex(null);
+    setEditText("");
+    await streamMessage(newMessages, editText.trim());
   };
 
   return (
@@ -231,8 +248,31 @@ const ChatInterface = ({
                       prose-table:border prose-table:border-border prose-th:bg-muted prose-th:p-2 prose-td:p-2 prose-td:border prose-td:border-border">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
+                  ) : editingIndex === i ? (
+                    <div className="space-y-2">
+                      <textarea
+                        className="w-full bg-primary-foreground/10 text-primary-foreground rounded-lg p-2 text-sm resize-none border-0 focus:outline-none focus:ring-1 focus:ring-primary-foreground/30"
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={3}
+                        autoFocus
+                      />
+                      <div className="flex gap-1 justify-end">
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setEditingIndex(null)}>Cancel</Button>
+                        <Button size="sm" className="h-7 text-xs bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground border-0" onClick={() => editAndResend(i)}>Resend</Button>
+                      </div>
+                    </div>
                   ) : (
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    <div className="group/msg relative">
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                      <button
+                        onClick={() => { setEditingIndex(i); setEditText(msg.content); }}
+                        className="absolute -bottom-2 -right-2 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded-md bg-primary-foreground/20 hover:bg-primary-foreground/30"
+                        title="Edit & resend"
+                      >
+                        <Pencil className="w-3 h-3 text-primary-foreground" />
+                      </button>
+                    </div>
                   )}
                 </div>
                 {msg.role === "user" && (

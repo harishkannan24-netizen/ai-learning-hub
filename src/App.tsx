@@ -13,7 +13,9 @@ import NotesGenerator from "./pages/NotesGenerator";
 import QuizGenerator from "./pages/QuizGenerator";
 import ImageGenerator from "./pages/ImageGenerator";
 import PresentationGenerator from "./pages/PresentationGenerator";
+import VideoGenerator from "./pages/VideoGenerator";
 import SearchHistory from "./pages/SearchHistory";
+import SharedQuiz from "./pages/SharedQuiz";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
@@ -36,7 +38,9 @@ const App = () => (
           <Route path="/quiz-generator" element={<ProtectedRoute><QuizGenerator /></ProtectedRoute>} />
           <Route path="/image-generator" element={<ProtectedRoute><ImageGenerator /></ProtectedRoute>} />
           <Route path="/presentation-generator" element={<ProtectedRoute><PresentationGenerator /></ProtectedRoute>} />
+          <Route path="/video-generator" element={<ProtectedRoute><VideoGenerator /></ProtectedRoute>} />
           <Route path="/search-history" element={<ProtectedRoute><SearchHistory /></ProtectedRoute>} />
+          <Route path="/shared-quiz/:id" element={<SharedQuiz />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

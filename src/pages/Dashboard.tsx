@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import {
   GraduationCap, Bot, Code2, HelpCircle, Map, FileText,
-  Brain, LogOut, Sparkles, Clock, Image, Presentation,
+  Brain, LogOut, Sparkles, Clock, Image, Presentation, Video,
 } from "lucide-react";
 
 const features = [
@@ -16,6 +16,7 @@ const features = [
   { title: "Notes Generator", description: "Summarize files and generate study notes", icon: FileText, path: "/notes-generator", gradient: "from-pink-500 to-rose-500" },
   { title: "Quiz Generator", description: "Test your knowledge with quizzes", icon: Brain, path: "/quiz-generator", gradient: "from-indigo-500 to-blue-500" },
   { title: "Image Generator", description: "Create stunning AI-generated images", icon: Image, path: "/image-generator", gradient: "from-fuchsia-500 to-pink-500" },
+  { title: "Video Generator", description: "Create explainer videos from any topic", icon: Video, path: "/video-generator", gradient: "from-red-500 to-orange-500" },
   { title: "Presentation Generator", description: "Turn PDFs into animated presentations", icon: Presentation, path: "/presentation-generator", gradient: "from-sky-500 to-indigo-500" },
   { title: "Search History", description: "View all your past queries and responses", icon: Clock, path: "/search-history", gradient: "from-gray-500 to-slate-600" },
 ];
