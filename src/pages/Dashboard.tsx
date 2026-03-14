@@ -18,6 +18,7 @@ const features = [
   { title: "Image Generator", description: "Create stunning AI-generated images", icon: Image, path: "/image-generator", gradient: "from-fuchsia-500 to-pink-500" },
   { title: "Video Generator", description: "Create explainer videos from any topic", icon: Video, path: "/video-generator", gradient: "from-red-500 to-orange-500" },
   { title: "Presentation Generator", description: "Turn PDFs into animated presentations", icon: Presentation, path: "/presentation-generator", gradient: "from-sky-500 to-indigo-500" },
+  { title: "PDF to Audio", description: "Convert documents to audio for listening", icon: Headphones, path: "/pdf-to-audio", gradient: "from-teal-500 to-cyan-500" },
   { title: "Search History", description: "View all your past queries and responses", icon: Clock, path: "/search-history", gradient: "from-gray-500 to-slate-600" },
 ];
 

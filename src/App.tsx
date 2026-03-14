@@ -40,6 +40,7 @@ const App = () => (
           <Route path="/image-generator" element={<ProtectedRoute><ImageGenerator /></ProtectedRoute>} />
           <Route path="/presentation-generator" element={<ProtectedRoute><PresentationGenerator /></ProtectedRoute>} />
           <Route path="/video-generator" element={<ProtectedRoute><VideoGenerator /></ProtectedRoute>} />
+          <Route path="/pdf-to-audio" element={<ProtectedRoute><PDFtoAudio /></ProtectedRoute>} />
           <Route path="/search-history" element={<ProtectedRoute><SearchHistory /></ProtectedRoute>} />
           <Route path="/shared-quiz/:id" element={<SharedQuiz />} />
           <Route path="*" element={<NotFound />} />
