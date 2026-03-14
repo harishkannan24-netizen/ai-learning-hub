@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Bot, User, Loader2, Paperclip, X, FileText, Pencil } from "lucide-react";
+import { Send, Bot, User, Loader2, Paperclip, X, FileText, Pencil, Mic, MicOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -33,8 +33,11 @@ const ChatInterface = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [recording, setRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,7 +65,15 @@ const ChatInterface = ({
     try {
       const textExtensions = ['.txt', '.md', '.js', '.ts', '.tsx', '.jsx', '.py', '.java', '.cpp', '.c', '.html', '.css', '.json', '.csv', '.xml'];
       const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-      if (textExtensions.includes(ext)) {
+
+      // Handle audio files
+      const audioExts = ['.mp3', '.wav', '.ogg', '.m4a', '.webm', '.aac'];
+      if (audioExts.includes(ext)) {
+        setUploadedFile({
+          name: file.name,
+          content: `[AUDIO_FILE: ${file.name}]\nType: ${file.type || ext}\nSize: ${(file.size / 1024).toFixed(1)} KB\n\nThe user uploaded an audio file. Please acknowledge it and respond based on any context the user provides.`,
+        });
+      } else if (textExtensions.includes(ext)) {
         const text = await file.text();
         setUploadedFile({ name: file.name, content: text.slice(0, 50000) });
       } else {
@@ -83,6 +94,38 @@ const ChatInterface = ({
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  // Voice recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const file = new File([blob], `recording-${Date.now()}.webm`, { type: "audio/webm" });
+        setUploadedFile({
+          name: file.name,
+          content: `[VOICE_RECORDING: ${file.name}]\nSize: ${(file.size / 1024).toFixed(1)} KB\n\nThe user recorded a voice message. Please acknowledge it and respond based on any text context provided.`,
+        });
+        toast({ title: "Recording saved", description: "Voice recording attached" });
+      };
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+    } catch {
+      toast({ title: "Microphone access denied", variant: "destructive" });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setRecording(false);
   };
 
   const saveToHistory = async (query: string, response: string) => {
@@ -204,7 +247,6 @@ const ChatInterface = ({
 
   const editAndResend = async (index: number) => {
     if (!editText.trim() || loading) return;
-    // Truncate messages to before this user message, add the edited one
     const truncated = messages.slice(0, index);
     const editedMsg: Message = { role: "user", content: editText.trim() };
     const newMessages = [...truncated, editedMsg];
@@ -311,11 +353,21 @@ const ChatInterface = ({
           <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2 max-w-3xl mx-auto">
             <input
               type="file" ref={fileInputRef} className="hidden"
-              accept=".pdf,.ppt,.pptx,.xls,.xlsx,.csv,.doc,.docx,.txt,.md,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.html,.css,.json,.xml,.zip,.rar,.mp3,.mp4,.wav,.png,.jpg,.jpeg,.gif,.webp,.svg,.ico,.woff,.woff2,.ttf,.otf,.eot"
+              accept=".pdf,.ppt,.pptx,.xls,.xlsx,.csv,.doc,.docx,.txt,.md,.js,.ts,.tsx,.jsx,.py,.java,.cpp,.c,.html,.css,.json,.xml,.zip,.rar,.mp3,.mp4,.wav,.m4a,.ogg,.webm,.aac,.png,.jpg,.jpeg,.gif,.webp,.svg"
               onChange={handleFileUpload}
             />
             <Button type="button" variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={uploading || loading} className="shrink-0">
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant={recording ? "destructive" : "outline"}
+              size="icon"
+              onClick={recording ? stopRecording : startRecording}
+              disabled={loading}
+              className="shrink-0"
+            >
+              {recording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </Button>
             <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder={placeholder} disabled={loading} className="flex-1" />
             <Button type="submit" disabled={loading || (!input.trim() && !uploadedFile)} className="gradient-primary border-0">
