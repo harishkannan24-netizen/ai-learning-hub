@@ -14,6 +14,7 @@ import QuizGenerator from "./pages/QuizGenerator";
 import ImageGenerator from "./pages/ImageGenerator";
 import PresentationGenerator from "./pages/PresentationGenerator";
 import VideoGenerator from "./pages/VideoGenerator";
+import PDFtoAudio from "./pages/PDFtoAudio";
 import SearchHistory from "./pages/SearchHistory";
 import SharedQuiz from "./pages/SharedQuiz";
 import ProtectedRoute from "./components/ProtectedRoute";
