@@ -51,6 +51,7 @@ const ImageGenerator = () => {
     const prompt = uploadedFile
       ? `${input.trim() ? input.trim() + "\n\n" : ""}Based on this document (${uploadedFile.name}):\n${uploadedFile.content}`
       : input.trim();
+    const displayPrompt = input.trim() || uploadedFile?.name || prompt.slice(0, 60);
     setInput("");
     setUploadedFile(null);
     setLoading(true);
@@ -74,17 +75,30 @@ const ImageGenerator = () => {
       }
 
       const data = await resp.json();
-      const imageUrl = data.images?.[0]?.image_url?.url || "";
+      // Support multiple response formats from the AI gateway
+      let imageUrl = "";
+      if (data.images?.length) {
+        const img = data.images[0];
+        if (typeof img === "string") {
+          imageUrl = img.startsWith("data:") ? img : `data:image/png;base64,${img}`;
+        } else if (img?.url) {
+          imageUrl = img.url;
+        } else if (img?.image_url?.url) {
+          imageUrl = img.image_url.url;
+        } else if (img?.b64_json) {
+          imageUrl = `data:image/png;base64,${img.b64_json}`;
+        }
+      }
       const text = data.text || "";
 
       if (imageUrl) {
-        setResults(prev => [{ prompt: input.trim() || uploadedFile?.name || prompt.slice(0, 60), imageUrl, text }, ...prev]);
+        setResults(prev => [{ prompt: displayPrompt, imageUrl, text }, ...prev]);
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase.from("chat_history").insert({
             user_id: user.id,
             module_name: "image-generator",
-            search_query: input.trim() || uploadedFile?.name || prompt.slice(0, 60),
+            search_query: displayPrompt,
             ai_response: JSON.stringify({ imageUrl, text }),
           });
         }
@@ -102,7 +116,12 @@ const ImageGenerator = () => {
     try {
       const data = JSON.parse(response);
       if (data.imageUrl) {
-        setResults(prev => [{ prompt: _query, imageUrl: data.imageUrl, text: data.text || "" }, ...prev]);
+        // Check if already in results to avoid duplicates
+        setResults(prev => {
+          const exists = prev.some(r => r.imageUrl === data.imageUrl);
+          if (exists) return prev;
+          return [{ prompt: _query, imageUrl: data.imageUrl, text: data.text || "" }, ...prev];
+        });
       }
     } catch {
       setInput(_query);
@@ -110,12 +129,24 @@ const ImageGenerator = () => {
     setHistoryOpen(false);
   };
 
-  const downloadImage = (url: string, prompt: string) => {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `zyra-${prompt.slice(0, 20).replace(/\s+/g, "-")}.png`;
-    link.target = "_blank";
-    link.click();
+  const downloadImage = async (url: string, prompt: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `zyra-${prompt.slice(0, 20).replace(/\s+/g, "-")}.png`;
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Fallback for cross-origin
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `zyra-${prompt.slice(0, 20).replace(/\s+/g, "-")}.png`;
+      link.target = "_blank";
+      link.click();
+    }
   };
 
   return (
