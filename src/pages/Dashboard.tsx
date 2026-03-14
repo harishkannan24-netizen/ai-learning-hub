@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import {
   GraduationCap, Bot, Code2, HelpCircle, Map, FileText,
-  Brain, LogOut, Sparkles, Clock, Image, Presentation, Video,
+  Brain, LogOut, Sparkles, Clock, Image, Presentation, Video, Headphones,
 } from "lucide-react";
 
 const features = [
