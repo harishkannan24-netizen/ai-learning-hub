@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import ChatHistorySidebar from "./ChatHistorySidebar";
+import CodeBlock from "./CodeBlock";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -279,16 +280,36 @@ const ChatInterface = ({
                   {msg.role === "assistant" ? (
                     <div className="prose prose-sm max-w-none dark:prose-invert
                       prose-headings:font-display prose-headings:text-foreground prose-headings:mt-4 prose-headings:mb-2
-                      prose-p:text-secondary-foreground prose-p:leading-relaxed prose-p:my-2
-                      prose-li:text-secondary-foreground prose-li:my-0.5
+                      prose-p:text-secondary-foreground prose-p:leading-[1.8] prose-p:my-3 prose-p:tracking-[0.01em]
+                      prose-li:text-secondary-foreground prose-li:my-1.5 prose-li:leading-[1.75]
                       prose-strong:text-foreground
                       prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:text-primary
-                      prose-pre:bg-muted prose-pre:border prose-pre:border-border prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-pre:overflow-x-auto
-                      prose-ul:my-2 prose-ul:pl-4 prose-ol:my-2 prose-ol:pl-4
+                      prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 prose-pre:my-0
+                      prose-ul:my-3 prose-ul:pl-5 prose-ol:my-3 prose-ol:pl-5
                       prose-blockquote:border-l-primary prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:px-4
                       prose-hr:border-border prose-hr:my-4
                       prose-table:border prose-table:border-border prose-th:bg-muted prose-th:p-2 prose-td:p-2 prose-td:border prose-td:border-border">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown
+                        components={{
+                          code({ inline, className, children, ...props }: any) {
+                            const match = /language-(\w+)/.exec(className || "");
+                            const codeText = String(children).replace(/\n$/, "");
+                            if (inline || (!match && !codeText.includes("\n"))) {
+                              return (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                            return <CodeBlock code={codeText} language={match?.[1]} />;
+                          },
+                          pre({ children }: any) {
+                            return <>{children}</>;
+                          },
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
                   ) : editingIndex === i ? (
                     <div className="space-y-2">
