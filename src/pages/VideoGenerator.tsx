@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { generateImage, runSequential } from "@/lib/generateImage";
 
 type Scene = {
   title: string;
@@ -88,32 +89,10 @@ const VideoGenerator = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const generateImageForScene = async (imagePrompt: string): Promise<string | null> => {
-    try {
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-image`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({
-            prompt: `Cinematic high-detail photographic still: ${imagePrompt}. Dramatic lighting, depth of field, no text, no captions, no watermark.`,
-          }),
-        }
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const img = data.images?.[0];
-      if (typeof img === "string") return img;
-      if (img?.image_url?.url) return img.image_url.url;
-      if (img?.url) return img.url;
-      return null;
-    } catch {
-      return null;
-    }
-  };
+  const generateImageForScene = (imagePrompt: string) =>
+    generateImage(
+      `Cinematic high-detail photographic still: ${imagePrompt}. Dramatic lighting, depth of field, no text, no captions, no watermark.`,
+    );
 
   const generate = async () => {
     if ((!input.trim() && !uploadedFile) || loading) return;
@@ -155,23 +134,21 @@ const VideoGenerator = () => {
       setCurrentScene(0);
       setImageTotal(data.scenes.length);
 
-      // Generate images in parallel; update each scene as it arrives
+      // Generate images sequentially (with backoff) to avoid rate limits
       let done = 0;
-      await Promise.all(
-        data.scenes.map(async (scene, idx) => {
-          const url = await generateImageForScene(scene.imagePrompt || scene.visual);
-          done += 1;
-          setImageProgress(done);
-          if (url) {
-            setVideoData(prev => {
-              if (!prev) return prev;
-              const scenes = [...prev.scenes];
-              scenes[idx] = { ...scenes[idx], imageUrl: url };
-              return { ...prev, scenes };
-            });
-          }
-        })
-      );
+      await runSequential(data.scenes, async (scene, idx) => {
+        const url = await generateImageForScene(scene.imagePrompt || scene.visual);
+        done += 1;
+        setImageProgress(done);
+        if (url) {
+          setVideoData(prev => {
+            if (!prev) return prev;
+            const scenes = [...prev.scenes];
+            scenes[idx] = { ...scenes[idx], imageUrl: url };
+            return { ...prev, scenes };
+          });
+        }
+      });
 
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
