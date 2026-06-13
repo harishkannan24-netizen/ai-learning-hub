@@ -36,6 +36,7 @@ serve(async (req) => {
       "title": "Scene Title",
       "narration": "What the narrator says (2-3 sentences)",
       "visual": "Description of what's shown on screen",
+      "imagePrompt": "Detailed cinematic image prompt for an AI image generator. Describe a single vivid still frame that visually represents this scene (subject, action, setting, lighting, mood, style). 1-2 sentences, no text overlays.",
       "icon": "one of: book, lightbulb, target, chart, users, shield, rocket, star, globe, heart, code, brain, zap, layers",
       "bgColor": "one of: blue, violet, emerald, orange, pink, indigo, fuchsia, sky, lime, red, cyan, teal, amber, rose"
     }
@@ -63,10 +64,11 @@ No markdown, no extra text.`
                         title: { type: "string" },
                         narration: { type: "string" },
                         visual: { type: "string" },
+                        imagePrompt: { type: "string" },
                         icon: { type: "string" },
                         bgColor: { type: "string" },
                       },
-                      required: ["title", "narration", "visual", "icon", "bgColor"],
+                      required: ["title", "narration", "visual", "imagePrompt", "icon", "bgColor"],
                       additionalProperties: false,
                     },
                   },
