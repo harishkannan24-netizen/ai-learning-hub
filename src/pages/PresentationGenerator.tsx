@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { generateImage, runSequential } from "@/lib/generateImage";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -127,43 +128,24 @@ const PresentationGenerator = () => {
         setPresentation(data);
         setCurrentSlide(0);
 
-        // Generate one AI image per slide in parallel
+        // Generate AI images sequentially with backoff to avoid rate limits
         setImageProgress({ done: 0, total: data.slides.length });
         let done = 0;
-        await Promise.all(
-          data.slides.map(async (s: Slide, idx: number) => {
-            try {
-              const r = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-image`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-                  },
-                  body: JSON.stringify({
-                    prompt: `Editorial illustration for a slide titled "${s.title}". ${s.imagePrompt || s.points?.[0] || ""}. Theme: ${theme}. Clean composition, no text, no captions.`,
-                  }),
-                }
-              );
-              if (r.ok) {
-                const d = await r.json();
-                const img = d.images?.[0];
-                const url = typeof img === "string" ? img : img?.image_url?.url || img?.url;
-                if (url) {
-                  setPresentation(prev => {
-                    if (!prev) return prev;
-                    const slides = [...prev.slides];
-                    slides[idx] = { ...slides[idx], imageUrl: url };
-                    return { ...prev, slides };
-                  });
-                }
-              }
-            } catch { /* ignore individual image failures */ }
-            done += 1;
-            setImageProgress({ done, total: data.slides.length });
-          })
-        );
+        await runSequential(data.slides as Slide[], async (s, idx) => {
+          const url = await generateImage(
+            `Editorial illustration for a slide titled "${s.title}". ${s.imagePrompt || s.points?.[0] || ""}. Theme: ${theme}. Clean composition, no text, no captions.`,
+          );
+          if (url) {
+            setPresentation(prev => {
+              if (!prev) return prev;
+              const slides = [...prev.slides];
+              slides[idx] = { ...slides[idx], imageUrl: url };
+              return { ...prev, slides };
+            });
+          }
+          done += 1;
+          setImageProgress({ done, total: data.slides.length });
+        });
 
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
