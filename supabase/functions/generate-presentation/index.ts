@@ -9,11 +9,22 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { content, topic } = await req.json();
+    const { content, topic, length, theme } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    const slideCount =
+      length === "brief" ? "5-6" : length === "high" ? "12-15" : "8-10";
+    const themeDesc =
+      theme === "corporate" ? "clean, professional, executive tone"
+      : theme === "creative" ? "playful, vibrant, imaginative tone"
+      : theme === "academic" ? "structured, scholarly, fact-rich tone"
+      : theme === "minimal" ? "concise, calm, lots of whitespace feel"
+      : "balanced modern educational tone";
+
     const systemPrompt = `You are a presentation slide generator. Given content or a topic, create an engaging animated presentation.
+
+Length: ${slideCount} slides. Tone: ${themeDesc}.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -23,12 +34,13 @@ Return ONLY valid JSON in this exact format:
       "title": "Slide Title",
       "points": ["Point 1", "Point 2", "Point 3"],
       "note": "Speaker notes or additional context",
-      "icon": "one of: book, lightbulb, target, chart, users, shield, rocket, star, globe, heart"
+      "icon": "one of: book, lightbulb, target, chart, users, shield, rocket, star, globe, heart",
+      "imagePrompt": "Detailed prompt for an AI image illustrating this slide (subject, mood, style). 1 sentence, no text overlays."
     }
   ]
 }
 
-Create 6-10 slides. Make points concise (max 15 words each). Use varied icons. If given a legal/technical document, break it into understandable sections.`;
+Make points concise (max 15 words each). Use varied icons. Every slide MUST include an imagePrompt. If given a legal/technical document, break it into understandable sections.`;
 
     const userContent = content
       ? `Create a presentation from this document content:\n\n${content}`
